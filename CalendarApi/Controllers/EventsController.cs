@@ -14,7 +14,7 @@ namespace CalendarApi.Controllers
             this.eventService = eventService;
         }
 
-        [Authorize]
+        
         [HttpGet]
         public async Task<IActionResult> GetEventsInTimeRange()
         {
