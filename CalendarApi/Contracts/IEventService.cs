@@ -5,6 +5,7 @@ namespace CalendarApi.Contracts
 {
     public interface IEventService
     {
-        public Task<List<EventDto>> GetEventsInTimeRange();
+        public Task<List<EventDto>> GetEventsInTimeRange(string calendarId);
+        public Task TestBroadcast();
     }
 }

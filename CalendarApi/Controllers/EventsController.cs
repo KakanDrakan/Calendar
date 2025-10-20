@@ -18,8 +18,25 @@ namespace CalendarApi.Controllers
         [HttpGet]
         public async Task<IActionResult> GetEventsInTimeRange()
         {
-            var events = await eventService.GetEventsInTimeRange();
+            string calendarId = "test";
+            var events = await eventService.GetEventsInTimeRange(calendarId);
             return Ok(events);
         }
+
+        [HttpPost("test-broadcast")]
+        public async Task<IActionResult> TestBroadcast()
+        {
+            try
+            {
+                await eventService.TestBroadcast();
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during test broadcast: {ex.Message}");
+                return StatusCode(500, "An error occurred while testing the broadcast.");
+            }
+        }
+
     }
 }

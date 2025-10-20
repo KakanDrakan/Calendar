@@ -52,7 +52,12 @@ builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddMemoryCache();
+builder.Services.AddSignalR();
+
 builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<CalendarUpdateService>();
+builder.Services.AddHostedService<CalendarUpdateService>();
 
 // Cors configuration
 var allowedOrigins = "AllowedOrigins";
@@ -64,7 +69,8 @@ builder.Services.AddCors(options =>
         {
             policy.WithOrigins("https://localhost:7248", "http://localhost:8080")
                   .AllowAnyHeader()
-                  .AllowAnyMethod();
+                  .AllowAnyMethod()
+                  .AllowCredentials();
         });
 });
 
@@ -84,6 +90,7 @@ app.UseCors(allowedOrigins);
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapHub<CalendarHub>("/hub/calendar");
 app.MapControllers();
 
 app.Run();
