@@ -1,4 +1,5 @@
-﻿using CalendarApi.Contracts;
+﻿using Azure.Security.KeyVault.Certificates;
+using CalendarApi.Contracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -36,6 +37,12 @@ namespace CalendarApi.Controllers
                 Console.WriteLine($"Error during test broadcast: {ex.Message}");
                 return StatusCode(500, "An error occurred while testing the broadcast.");
             }
+        }
+        [HttpDelete]
+        public async Task<IActionResult> DeleteSubscriptionsToResource(string resource)
+        {
+            var amount = await eventService.DeleteSubscriptionsToResource(resource);
+            return Ok(amount);
         }
 
     }

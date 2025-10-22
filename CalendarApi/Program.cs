@@ -3,6 +3,7 @@ using Azure.Identity;
 using CalendarApi.Contracts;
 using CalendarApi.Helpers;
 using CalendarApi.Services;
+using CalendarApi.Stores;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Graph;
@@ -31,7 +32,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 //    return new GraphServiceClient(credential);
 //});
-
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ListenAnyIP(7248, listenOptions =>
+    {
+        listenOptions.UseHttps();
+    });
+});
 builder.Services.AddScoped<GraphServiceClient>(provider =>
 {
     var config = builder.Configuration;
@@ -57,7 +64,10 @@ builder.Services.AddSignalR();
 
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<CalendarUpdateService>();
-builder.Services.AddHostedService<CalendarUpdateService>();
+builder.Services.AddScoped<GraphSubscriptionService>();
+builder.Services.AddScoped<SubscriptionStore>();
+builder.Services.AddScoped<RecentlyUpdatedResourceStore>();
+builder.Services.AddScoped<CalendarStore>();
 
 // Cors configuration
 var allowedOrigins = "AllowedOrigins";
@@ -87,8 +97,6 @@ app.UseHttpsRedirection();
 
 app.UseCors(allowedOrigins);
 
-app.UseAuthentication();
-app.UseAuthorization();
 
 app.MapHub<CalendarHub>("/hub/calendar");
 app.MapControllers();

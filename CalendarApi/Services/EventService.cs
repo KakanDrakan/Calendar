@@ -1,5 +1,7 @@
 ﻿using CalendarApi.Contracts;
 using CalendarApi.Dtos;
+using CalendarApi.Helpers;
+using CalendarApi.Stores;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Graph;
@@ -12,22 +14,23 @@ namespace CalendarApi.Services
     public class EventService : IEventService
     {
         private readonly GraphServiceClient graphServiceClient;
-        private readonly IMemoryCache memoryCache;
+        private readonly CalendarStore calendarStore;
         private readonly CalendarUpdateService updateService;
+        private readonly GraphSubscriptionService subscriptionService;
 
-        public EventService(GraphServiceClient graphServiceClient, IMemoryCache memoryCache, CalendarUpdateService updateService)
+        public EventService(GraphServiceClient graphServiceClient, CalendarStore calendarStore, CalendarUpdateService updateService, GraphSubscriptionService subscriptionService)
         {
             this.graphServiceClient = graphServiceClient;
-            this.memoryCache = memoryCache;
+            this.calendarStore = calendarStore;
             this.updateService = updateService;
+            this.subscriptionService = subscriptionService;
         }
 
-        public async Task<List<EventDto>> GetEventsInTimeRange(string calendarId)
+        public async Task<List<EventDto>> GetEventsInTimeRange(string calendarId, bool tryCache = true)
         {
-            string cacheKey = $"CalendarEvents.{calendarId}";
-            if (memoryCache.TryGetValue(cacheKey, out List<EventDto> cachedEvents))
+            if (calendarStore.TryGetEvents(calendarId, out List<EventDto> cachedEvents) && tryCache)
             {
-                Console.WriteLine("Returning events from memory cache.");
+                Console.WriteLine($"Returning events from memory cache for calendar {calendarId}");
                 return cachedEvents;
             }
 
@@ -35,7 +38,6 @@ namespace CalendarApi.Services
             var endDate = startDate.AddDays(30);
 
             var response = await graphServiceClient.Users["tobias@code4value.com"].CalendarView
-
                 .GetAsync(config =>
                 {
                     config.QueryParameters.StartDateTime = startDate.ToString("o");
@@ -43,6 +45,8 @@ namespace CalendarApi.Services
                     config.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "bodyPreview", "isAllDay" };
                     config.QueryParameters.Orderby = new[] { "start/dateTime" };
                 });
+
+            ConsoleHelper.WriteTimeToConsole();
             Console.WriteLine($"Fetched events from Graph API for calendar {calendarId}");
 
             var dtos = response?.Value?.Select(e =>
@@ -62,8 +66,8 @@ namespace CalendarApi.Services
                 };
             }).ToList() ?? new List<EventDto>();
 
-            memoryCache.Set(cacheKey, dtos, TimeSpan.FromSeconds(30));
-
+            calendarStore.SetEvents(calendarId, dtos);
+            await subscriptionService.CreateCalendarSubscriptionAsync(calendarId, "users/tobias@code4value.com/events"); //CHANGE FOR PRODUCTION
             return dtos;
         }
 
@@ -107,6 +111,11 @@ namespace CalendarApi.Services
             {
                 return localTime; // Fallback
             }
+        }
+
+        public async Task<int> DeleteSubscriptionsToResource(string resource)
+        {
+            return await subscriptionService.DeleteSubscriptionsForResourceAsync(resource);
         }
 
     }
