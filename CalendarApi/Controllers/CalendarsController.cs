@@ -1,5 +1,6 @@
 ﻿using CalendarApi.Contracts;
 using CalendarApi.Dtos;
+using CalendarApi.Models;
 using CalendarApi.Services;
 using CalendarApi.Stores;
 using Microsoft.AspNetCore.Mvc;
@@ -13,12 +14,16 @@ namespace CalendarApi.Controllers
     {
         // GET /calendars?session={sessionId}
         [HttpGet]
-        public async Task<IActionResult> GetCalendars([FromQuery] string session)
+        public async Task<IActionResult> GetCalendars([FromQuery] string sessionId)
         {
-            if (!sessionStore.TryGetSession(session, out var authSession))
-                return NotFound("Session not found.");
+            var (found, session) = await sessionStore.TryGetSessionAsync(sessionId);
+            if (!found || session?.State == SessionState.Expired)
+            {
+                return Unauthorized();
+            }
 
-            var calendars = await authService.GetCalendarsAsync(authSession);
+
+            var calendars = await authService.GetCalendarsAsync(session);
             return Ok(calendars.Select(c => new { c.Id, c.Name, c.Color }));
         }
 
@@ -28,13 +33,17 @@ namespace CalendarApi.Controllers
         {
             Console.WriteLine($"[SelectCalendar] Received selection: SessionId={dto.SessionId}, CalendarId={dto.CalendarId}");
 
-            if (!sessionStore.TryGetSession(dto.SessionId, out var session))
-                return NotFound("Session not found.");
+            var (found, session) = await sessionStore.TryGetSessionAsync(dto.SessionId);
+            if (!found || session?.State == SessionState.Expired)
+            {
+                return Unauthorized();
+            }
+
 
             session.SelectedCalendarId = dto.CalendarId;
             // Optional: update session state to authenticated/selected
             session.State = SessionState.Authenticated;
-            sessionStore.UpdateSession(session);
+            await sessionStore.UpdateSessionAsync(session);
 
             subscriptionService.CreateCalendarSubscriptionAsync(dto.CalendarId, dto.SessionId);
 

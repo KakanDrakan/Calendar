@@ -1,7 +1,7 @@
 ﻿using Azure.Core;
 using Azure.Identity;
-using CalendarApi.Dtos;
 using CalendarApi.Helpers;
+using CalendarApi.Models;
 using CalendarApi.Stores;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -22,13 +22,14 @@ namespace CalendarApi.Services
             this.sessionStore = sessionStore;
         }
 
-        public async Task<CalendarSubscriptionDto?> CreateCalendarSubscriptionAsync(string calendarId, string sessionId)
+        public async Task<CalendarSubscription?> CreateCalendarSubscriptionAsync(string calendarId, string sessionId)
         {
-            if (subscriptionStore.TryGetSubscription(calendarId, out var existing))
-            {
-                return existing;
-            }
-            if (!sessionStore.TryGetSession(sessionId, out var session)) throw new ArgumentException();
+            (var subscriptionExists, var existing) = await subscriptionStore.TryGetSubscription(calendarId);
+            
+            if (subscriptionExists) return existing;
+            
+            (var sessionExists, var session) = await sessionStore.TryGetSessionAsync(sessionId);
+            if (!sessionExists) throw new ArgumentException("Session not found", nameof(sessionId));
 
             var accessToken = session.AccessToken;
 
@@ -58,10 +59,10 @@ namespace CalendarApi.Services
             {
                 await DeleteSubscriptionsForResourceAsync($"/users/{userId}/calendars/{calendarId}/events");
                 var result = await graphService.Subscriptions.PostAsync(subscription);
-                subscriptionStore.SaveSubscription(calendarId, result, userId);
+                await subscriptionStore.SaveSubscriptionAsync(calendarId, result, userId);
                 ConsoleHelper.WriteTimeToConsole();
                 Console.WriteLine($"Subscription created: {result.Id} for resource {result.Resource}");
-                var dto = new CalendarSubscriptionDto
+                var dto = new CalendarSubscription
                 {
                     CalendarId = calendarId,
                     SubscriptionId = result.Id!,

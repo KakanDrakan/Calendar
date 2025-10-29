@@ -1,4 +1,4 @@
-﻿using CalendarApi.Dtos;
+﻿using CalendarApi.Models;
 
 namespace CalendarApi.Contracts
 {

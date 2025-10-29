@@ -1,7 +1,7 @@
 ﻿using Azure.Core;
 using CalendarApi.Contracts;
-using CalendarApi.Dtos;
 using CalendarApi.Helpers;
+using CalendarApi.Models;
 using CalendarApi.Stores;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Graph;
@@ -45,8 +45,11 @@ namespace CalendarApi.Services
         // Step 2: Exchange the auth code for tokens
         public async Task<AuthSession?> ExchangeCodeForTokenAsync(string sessionId, string code)
         {
-            if (!sessionStore.TryGetSession(sessionId, out var session))
+            var (found, session) = await sessionStore.TryGetSessionAsync(sessionId);
+            if (!found || session?.State == SessionState.Expired)
+            {
                 return null;
+            }
 
             var clientId = config["AzureAd:ClientId"];
             var tenantId = config["AzureAd:TenantId"];
@@ -78,13 +81,13 @@ namespace CalendarApi.Services
             session.ExpiresAt = DateTime.UtcNow.AddDays(1);
 
             // Update session with the new information
-            sessionStore.UpdateSession(session);
+            await sessionStore.UpdateSessionAsync(session);
 
             logger.LogInformation("Initial token acquired for user {UserName} (ID: {UserId})", 
                 session.UserName, session.UserId);
             logger.LogDebug("Token cache size: {Size}", session.TokenCacheData?.Length ?? 0);
 
-            sessionStore.UpdateSession(session);
+            await sessionStore.UpdateSessionAsync(session);
 
             return session;
         }
@@ -161,7 +164,7 @@ namespace CalendarApi.Services
                     session.State = SessionState.Authenticated;
                 }
 
-                sessionStore.UpdateSession(session);
+                await sessionStore.UpdateSessionAsync(session);
                 
                 logger.LogDebug("Token refresh successful. New expiration: {ExpiresAt}", session.TokenExpiresAt);
                 return result.AccessToken;

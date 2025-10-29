@@ -1,13 +1,28 @@
-﻿using CalendarApi.Dtos;
+﻿using CalendarApi.Models;
+using MongoDB.Driver;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace CalendarApi.Stores
 {
     public class SessionStore
     {
-        private readonly ConcurrentDictionary<string, AuthSession> _sessions = new();
+        private readonly IMongoCollection<AuthSession> _sessions;
 
-        public AuthSession CreateSession()
+        public SessionStore(IMongoDatabase database)
+        {
+            _sessions = database.GetCollection<AuthSession>("AuthSessions");
+
+            var indexKeys = Builders<AuthSession>.IndexKeys
+                .Ascending(s => s.SessionId)
+                .Ascending(s => s.ExpiresAt);
+
+            var indexModel = new CreateIndexModel<AuthSession>(indexKeys);
+            _sessions.Indexes.CreateOne(indexModel);
+        }
+
+        public async Task<AuthSession> CreateSessionAsync()
         {
             var session = new AuthSession
             {
@@ -16,58 +31,68 @@ namespace CalendarApi.Stores
                 ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                 State = SessionState.Pending
             };
-            _sessions[session.SessionId] = session;
+            await _sessions.InsertOneAsync(session);
             return session;
         }
 
-        public bool TryGetSession(string sessionId, out AuthSession? session)
+        public async Task<AuthSession?> GetSessionAsync(string sessionId)
         {
-            if (!_sessions.TryGetValue(sessionId, out var foundSession))
-            {
-                session = null;
-                return false;
-            }
+            return await _sessions
+                .Find(s => s.SessionId == sessionId)
+                .FirstOrDefaultAsync();
+        }
 
-            session = foundSession;
+        public async Task<(bool found, AuthSession? session)> TryGetSessionAsync(string sessionId)
+        {
+            var session = await GetSessionAsync(sessionId);
+            if (session == null)
+                return (false, null);
 
-            // Check if the session or token is expired
             var now = DateTime.UtcNow;
+
             if (session.ExpiresAt < now)
             {
                 session.State = SessionState.Expired;
-                return true;
+                await UpdateSessionAsync(session);
+                return (true, session);
             }
 
-            // If token is expiring soon (within 5 minutes), mark for refresh
             if (session.TokenExpiresAt.HasValue && session.TokenExpiresAt.Value.AddMinutes(-5) < now)
             {
                 session.State = SessionState.Expired;
+                await UpdateSessionAsync(session);
             }
-
-            return true;
+            return (true, session);
         }
 
-        public void UpdateSession(AuthSession session)
+        public async Task UpdateSessionAsync(AuthSession session)
         {
-            // Extend session expiration when updating with valid token
             if (session.TokenExpiresAt.HasValue && session.State != SessionState.Expired)
             {
                 session.ExpiresAt = DateTime.UtcNow.AddDays(1);
             }
-            
-            _sessions[session.SessionId] = session;
+
+            var update = Builders<AuthSession>.Update
+                .Set(s => s.ExpiresAt, session.ExpiresAt)
+                .Set(s => s.State, session.State)
+                .Set(s => s.UserId, session.UserId)
+                .Set(s => s.UserName, session.UserName)
+                .Set(s => s.AccessToken, session.AccessToken)
+                .Set(s => s.TokenExpiresAt, session.TokenExpiresAt)
+                .Set(s => s.SelectedCalendarId, session.SelectedCalendarId)
+                .Set(s => s.TokenCacheData, session.TokenCacheData);
+
+            await _sessions.UpdateOneAsync(s => s.SessionId == session.SessionId, update, new UpdateOptions { IsUpsert = true });
         }
 
-        public void RemoveSession(string sessionId)
-            => _sessions.TryRemove(sessionId, out _);
 
-        public IEnumerable<AuthSession> GetAll() => _sessions.Values;
+        public async Task RemoveSessionAsync(string sessionId)
+            => await _sessions.DeleteOneAsync(s => s.SessionId == sessionId);
 
-        public void CleanupExpired()
+        public async Task CleanupExpiredAsync()
         {
             var now = DateTime.UtcNow;
-            foreach (var s in _sessions.Values.Where(s => s.ExpiresAt < now))
-                _sessions.TryRemove(s.SessionId, out _);
+            await _sessions.DeleteManyAsync(s => s.ExpiresAt < now);
         }
     }
 }

@@ -2,6 +2,7 @@
 using CalendarApi.Contracts;
 using CalendarApi.Dtos;
 using CalendarApi.Helpers;
+using CalendarApi.Models;
 using CalendarApi.Stores;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Caching.Memory;
@@ -39,8 +40,12 @@ namespace CalendarApi.Services
 
         public async Task<List<EventDto>> GetEventsForUserAsync(string sessionId, string calendarId)
         {
-            if (!sessionStore.TryGetSession(sessionId, out var session))
-                throw new Exception("Session not found or expired.");
+            var (found, session) = await sessionStore.TryGetSessionAsync(sessionId);
+            if (!found || session?.State == SessionState.Expired)
+            {
+                throw new UnauthorizedAccessException("Session not found or expired.");
+            }
+
 
             var accessToken = await authService.GetAccessTokenAsync(session);
             if (accessToken == null)
@@ -193,7 +198,7 @@ namespace CalendarApi.Services
                 // Resolve calendarId from subscription if missing
                 if (string.IsNullOrEmpty(calendarId))
                 {
-                    var sub = subscriptionStore.GetBySubscriptionId(change.SubscriptionId);
+                    var sub = await subscriptionStore.GetBySubscriptionIdAsync(change.SubscriptionId);
                     calendarId = sub?.CalendarId;
                     Console.WriteLine($"Resolved calendarId {calendarId} for event {eventId} from subscription");
                 }

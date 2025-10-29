@@ -1,10 +1,13 @@
-﻿
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
+﻿using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
 
-namespace CalendarApi.Dtos
+namespace CalendarApi.Models
 {
     public class AuthSession
     {
+        [BsonId]
+        [BsonRepresentation(BsonType.String)]
         public string SessionId { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime ExpiresAt { get; set; }
@@ -14,7 +17,8 @@ namespace CalendarApi.Dtos
         public DateTime? TokenExpiresAt { get; set; }
         public string? UserId { get; set; }
         public string? UserName { get; set; }
-
+        [BsonIgnoreIfNull]
+        [BsonRepresentation(BsonType.Binary)]
         public byte[]? TokenCacheData { get; set; }
     }
 

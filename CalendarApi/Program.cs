@@ -1,37 +1,13 @@
-using Azure.Core;
 using Azure.Identity;
 using CalendarApi.Contracts;
-using CalendarApi.Helpers;
+using CalendarApi.Data;
 using CalendarApi.Services;
 using CalendarApi.Stores;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Graph;
-using Microsoft.Identity.Web;
+using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Auth/Graph configuration
-
-//builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-//    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"))
-//    .EnableTokenAcquisitionToCallDownstreamApi()
-//    .AddInMemoryTokenCaches();
-
-//var scopes = new[] { "https://graph.microsoft.com/.default" };
-
-//builder.Services.AddScoped<GraphServiceClient>(provider =>
-//{
-//    var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
-
-//    var credential = new DelegateCredential(async (context, cancel) =>
-//    {
-//        var token = await tokenAcquisition.GetAccessTokenForUserAsync(new[] { "https://graph.microsoft.com/.default" });
-//        return new AccessToken(token, DateTimeOffset.UtcNow.AddHours(1));
-//    });
-
-//    return new GraphServiceClient(credential);
-//});
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.ListenAnyIP(7248, listenOptions =>
@@ -62,6 +38,25 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache();
 builder.Services.AddSignalR();
 
+// --- MongoDB Setup ---
+builder.Services.AddSingleton<IMongoClient>(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var connectionString = configuration["MongoDb:ConnectionString"]
+        ?? throw new InvalidOperationException("Missing MongoDb connection string in configuration.");
+    return new MongoClient(connectionString);
+});
+
+builder.Services.AddSingleton<IMongoDatabase>(sp =>
+{
+    var client = sp.GetRequiredService<IMongoClient>();
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var databaseName = configuration["MongoDb:DatabaseName"] ?? "CalendarApiDb";
+    return client.GetDatabase(databaseName);
+});
+
+builder.Services.AddSingleton<MongoDbContext>();
+
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<CalendarUpdateService>();
 builder.Services.AddScoped<GraphSubscriptionService>();
@@ -73,6 +68,8 @@ builder.Services.AddSingleton<SubscriptionStore>();
 builder.Services.AddSingleton<RecentlyUpdatedResourceStore>();
 builder.Services.AddSingleton<CalendarStore>();
 builder.Services.AddSingleton<SessionStore>();
+
+builder.Services.AddHostedService<CleanupService>();
 
 // Cors configuration
 var allowedOrigins = "AllowedOrigins";

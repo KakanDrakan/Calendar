@@ -1,59 +1,75 @@
-﻿using CalendarApi.Dtos;
+﻿using CalendarApi.Data;
+using CalendarApi.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Graph.Models;
+using MongoDB.Driver;
 using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
 namespace CalendarApi.Stores
 {
     public class SubscriptionStore
     {
-        private readonly IMemoryCache cache;
-        private readonly TimeSpan subscriptionLifetime = TimeSpan.FromMinutes(10); //CHANGE FOR PRODUCTION
-        private readonly ConcurrentDictionary<string, string> subscriptionIdToCalendar = new();
+        private readonly IMongoCollection<CalendarSubscription> _subscriptions;
 
-        public SubscriptionStore(IMemoryCache cache)
+        public SubscriptionStore(MongoDbContext context)
         {
-            this.cache = cache;
+            _subscriptions = context.GetCollection<CalendarSubscription>("Subscriptions");
         }
 
-        public bool TryGetSubscription(string calendarId, out CalendarSubscriptionDto? subscription)
+        public async Task<(bool, CalendarSubscription)> TryGetSubscription(string calendarId)
         {
-            return cache.TryGetValue(calendarId, out subscription);
+            try
+            {
+                var subscription = await _subscriptions
+                    .Find(s => s.CalendarId == calendarId)
+                    .FirstOrDefaultAsync();
+                return (subscription != null, subscription);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error retrieving subscription for calendar {calendarId}: {ex.Message}");
+                return (false, null);
+            }
         }
 
-        public void SaveSubscription(string calendarId, Subscription subscription, string userId)
+        public async Task SaveSubscriptionAsync(string calendarId, Subscription subscription, string userId)
         {
-            var dto = new CalendarSubscriptionDto
+            var dto = new CalendarSubscription
             {
                 CalendarId = calendarId,
                 SubscriptionId = subscription.Id!,
-                ExpiresAt = subscription.ExpirationDateTime!.Value,
-                UserId = userId
+                ExpiresAt = subscription.ExpirationDateTime,
+                UserId = userId,
+                Resource = subscription.Resource
 
             };
 
-            cache.Set(calendarId, dto, subscriptionLifetime);
-            subscriptionIdToCalendar[dto.SubscriptionId] = calendarId;
+            await _subscriptions.ReplaceOneAsync(
+                filter: s => s.CalendarId == calendarId,
+                replacement: dto,
+                options: new ReplaceOptions { IsUpsert = true }
+            );
         }
 
-        public CalendarSubscriptionDto? GetBySubscriptionId(string subscriptionId)
+        public async Task<CalendarSubscription?> GetBySubscriptionIdAsync(string subscriptionId)
         {
-            if (subscriptionIdToCalendar.TryGetValue(subscriptionId, out var calendarId))
-            {
-                cache.TryGetValue(calendarId, out CalendarSubscriptionDto? dto);
-                return dto;
-            }
-            return null;
+            return await _subscriptions
+                .Find(s => s.SubscriptionId == subscriptionId)
+                .FirstOrDefaultAsync();
         }
 
-        public void Remove(string calendarId)
+        public async Task RemoveAsync(string calendarId)
         {
-            if (cache.TryGetValue(calendarId, out CalendarSubscriptionDto? dto))
+            try
             {
-                if (dto != null)
-                    subscriptionIdToCalendar.TryRemove(dto.SubscriptionId, out _);
+                await _subscriptions.DeleteOneAsync(s => s.CalendarId == calendarId);
             }
-            cache.Remove(calendarId);
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting subscription for calendar {calendarId}: {ex.Message}");
+            }
+
         }
     }
 }

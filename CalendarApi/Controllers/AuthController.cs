@@ -1,5 +1,6 @@
 ﻿using CalendarApi.Contracts;
 using CalendarApi.Dtos;
+using CalendarApi.Models;
 using CalendarApi.Services;
 using CalendarApi.Stores;
 using Microsoft.AspNetCore.Mvc;
@@ -29,9 +30,9 @@ namespace CalendarApi.Controllers
             this.config = config;
         }
         [HttpPost]
-        public IActionResult CreateSession()
+        public async Task<IActionResult> CreateSession()
         {
-            var session = sessionStore.CreateSession();
+            var session = await sessionStore.CreateSessionAsync();
 
             return Ok(new { session.SessionId });
         }
@@ -63,10 +64,13 @@ namespace CalendarApi.Controllers
         /// Returns the current state of a session (for polling).
         /// </summary>
         [HttpGet("session/{sessionId}")]
-        public IActionResult GetSessionState(string sessionId)
+        public async Task<IActionResult> GetSessionState(string sessionId)
         {
-            if (!sessionStore.TryGetSession(sessionId, out var session))
-                return NotFound("Session not found.");
+            var (found, session) = await sessionStore.TryGetSessionAsync(sessionId);
+            if (!found || session?.State == SessionState.Expired)
+            {
+                return Unauthorized();
+            }
 
             return Ok(new
             {
@@ -77,10 +81,14 @@ namespace CalendarApi.Controllers
             });
         }
         [HttpGet("signalr-token")]
-        public IActionResult GetSignalRToken([FromQuery] string sessionId)
+        public async Task<IActionResult> GetSignalRToken([FromQuery] string sessionId)
         {
             if (string.IsNullOrEmpty(sessionId)) return BadRequest("Missing sessionId");
-            if (!sessionStore.TryGetSession(sessionId, out var session)) return NotFound("Session not found");
+            var (found, session) = await sessionStore.TryGetSessionAsync(sessionId);
+            if (!found || session?.State == SessionState.Expired)
+            {
+                return Unauthorized();
+            }
 
             // Optionally verify session.State is acceptable (pending/authenticated)
             // e.g. if(session.State == SessionState.Expired) return BadRequest("Session expired");
