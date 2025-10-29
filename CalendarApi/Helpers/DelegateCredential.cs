@@ -18,6 +18,4 @@ namespace CalendarApi.Helpers
             return _tokenCallback(requestContext, cancellationToken).Result;
         }
     }
-    
-    
 }

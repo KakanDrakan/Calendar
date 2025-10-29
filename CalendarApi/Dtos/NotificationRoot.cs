@@ -5,10 +5,10 @@ namespace CalendarApi.Dtos
     public class NotificationRoot
     {
         [JsonPropertyName("value")]
-        public List<ChangeNotification>? Value { get; set; }
+        public List<GraphChangeNotification>? Value { get; set; }
     }
 
-    public class ChangeNotification
+    public class GraphChangeNotification
     {
         [JsonPropertyName("subscriptionId")]
         public string SubscriptionId { get; set; }

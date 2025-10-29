@@ -65,19 +65,26 @@ builder.Services.AddSignalR();
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<CalendarUpdateService>();
 builder.Services.AddScoped<GraphSubscriptionService>();
-builder.Services.AddScoped<SubscriptionStore>();
-builder.Services.AddScoped<RecentlyUpdatedResourceStore>();
-builder.Services.AddScoped<CalendarStore>();
+builder.Services.AddSingleton<IAuthService, MicrosoftAuthService>();
+builder.Services.AddScoped<QrCodeService>();
+builder.Services.AddSingleton<SignalRTokenService>();
+
+builder.Services.AddSingleton<SubscriptionStore>();
+builder.Services.AddSingleton<RecentlyUpdatedResourceStore>();
+builder.Services.AddSingleton<CalendarStore>();
+builder.Services.AddSingleton<SessionStore>();
 
 // Cors configuration
 var allowedOrigins = "AllowedOrigins";
-
+var config = builder.Configuration;
+var apiTunnelUrl = config["Urls:Backend"];
+var frontendTunnelUrl = config["Urls:Frontend"];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(name: allowedOrigins,
         policy =>
         {
-            policy.WithOrigins("https://localhost:7248", "http://localhost:8080")
+            policy.WithOrigins("https://localhost:7248", "http://localhost:8080", apiTunnelUrl, frontendTunnelUrl)
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials();
@@ -98,7 +105,7 @@ app.UseHttpsRedirection();
 app.UseCors(allowedOrigins);
 
 
-app.MapHub<CalendarHub>("/hub/calendar");
+app.MapHub<CalendarHub>("/hubs/calendar");
 app.MapControllers();
 
 app.Run();

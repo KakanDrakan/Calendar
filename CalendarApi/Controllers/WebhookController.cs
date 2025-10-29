@@ -18,10 +18,8 @@ namespace CalendarApi.Controllers
         {
             using var reader = new StreamReader(Request.Body);
             var body = await reader.ReadToEndAsync();
-            //Console.WriteLine("Raw webhook payload:");
-            //Console.WriteLine(body);
 
-            // Handle subscription validation
+            // Subscription validation handshake
             if (!string.IsNullOrEmpty(validationToken))
             {
                 Console.WriteLine("Validation token received");
@@ -32,26 +30,51 @@ namespace CalendarApi.Controllers
             {
                 var notification = System.Text.Json.JsonSerializer.Deserialize<NotificationRoot>(body);
                 if (notification?.Value == null || notification.Value.Count == 0)
-                {
-                    Console.WriteLine("No notifications in payload");
                     return BadRequest("No notifications received");
-                }
 
+                var updates = new List<GraphChangeNotification>();
+                var deletes = new HashSet<string>();
+
+                // First pass: collect all deletes
                 foreach (var change in notification.Value)
                 {
-                    ConsoleHelper.WriteTimeToConsole();
-                    Console.WriteLine($"Change detected: {change.ChangeType} on {change.Resource}");
-                    
-                    if (updatesStore.IsInCache(change.ResourceData.Id)) continue;
-
-                    updatesStore.SetUpdate(change.ResourceData.Id);
-
-                    // You can extract calendarId from change.Resource if needed
-                    var calendarId = "test"; // Replace with actual logic if needed
-
-                    var updatedEvents = await eventService.GetEventsInTimeRange(calendarId, false);
-                    await updateService.NotifyCalendarUpdated(calendarId, updatedEvents);
+                    if (change.ChangeType.Equals("deleted", StringComparison.OrdinalIgnoreCase))
+                    {
+                        deletes.Add(change.ResourceData?.Id ?? "");
+                    }
                 }
+
+                // Second pass: collect updates that are not part of a create/delete
+                foreach (var change in notification.Value)
+                {
+                    if (change.ChangeType.Equals("updated", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var eventId = change.ResourceData?.Id ?? "";
+                        if (!deletes.Contains(eventId)) // ignore updates for events that are being deleted
+                        {
+                            updates.Add(change);
+                        }
+                    }
+                }
+
+                // Now process deletes first, then “true” updates
+                var deletesToProcess = notification.Value.Where(c => c.ChangeType.Equals("deleted", StringComparison.OrdinalIgnoreCase));
+                var updatesToProcess = updates;
+
+                foreach (var del in deletesToProcess)
+                {
+                    Console.WriteLine(); ConsoleHelper.WriteTimeToConsole();
+                    Console.WriteLine($"Received change: SubscriptionId={del.SubscriptionId.Substring(0, 5)}, ChangeType={del.ChangeType}, Resource={del.Resource.Substring(6, 14)}, ResourceId={del.ResourceData?.Id.Substring(0, 8)}");
+                    await eventService.HandleEventChangeAsync(del);
+                }
+
+                foreach (var upd in updatesToProcess)
+                {
+                    Console.WriteLine(); ConsoleHelper.WriteTimeToConsole();
+                    Console.WriteLine($"Received change: SubscriptionId={upd.SubscriptionId.Substring(0, 5)}, ChangeType={upd.ChangeType}, Resource={upd.Resource.Substring(6, 14)}, ResourceId={upd.ResourceData?.Id.Substring(0, 8)}");
+                    await eventService.HandleEventChangeAsync(upd);
+                }
+                
 
                 return Ok();
             }

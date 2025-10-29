@@ -1,5 +1,6 @@
 ﻿using Azure.Security.KeyVault.Certificates;
 using CalendarApi.Contracts;
+using CalendarApi.Stores;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,18 +11,34 @@ namespace CalendarApi.Controllers
     public class EventsController : ControllerBase
     {
         private readonly IEventService eventService;
-        public EventsController(IEventService eventService) 
+        private readonly IAuthService authService;
+        private readonly SessionStore sessionStore;
+        private readonly ILogger<EventsController> logger;
+        public EventsController(IEventService eventService, IAuthService authService, SessionStore sessionStore, ILogger<EventsController> logger) 
         { 
             this.eventService = eventService;
+            this.authService = authService;
+            this.sessionStore = sessionStore;
+            this.logger = logger;
         }
 
-        
-        [HttpGet]
-        public async Task<IActionResult> GetEventsInTimeRange()
+        [HttpGet("{sessionId}/{calendarId}")]
+        public async Task<IActionResult> GetEvents(string sessionId, string calendarId)
         {
-            string calendarId = "test";
-            var events = await eventService.GetEventsInTimeRange(calendarId);
-            return Ok(events);
+            try
+            {
+                var events = await eventService.GetEventsForUserAsync(sessionId, calendarId);
+                return Ok(events);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Unauthorized("Session expired, please reauthenticate.");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error fetching events for session {SessionId}", sessionId);
+                return StatusCode(500, "Failed to fetch events from Microsoft Graph.");
+            }
         }
 
         [HttpPost("test-broadcast")]

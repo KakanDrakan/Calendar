@@ -1,4 +1,7 @@
-﻿using CalendarApi.Helpers;
+﻿using Azure.Core;
+using Azure.Identity;
+using CalendarApi.Dtos;
+using CalendarApi.Helpers;
 using CalendarApi.Stores;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -7,25 +10,38 @@ namespace CalendarApi.Services
 {
     public class GraphSubscriptionService
     {
-        private readonly GraphServiceClient graphService;
+        private  GraphServiceClient graphService;
         private readonly IConfiguration config;
-        private readonly SubscriptionStore store;
+        private readonly SubscriptionStore subscriptionStore;
+        private readonly SessionStore sessionStore;
 
-        public GraphSubscriptionService(GraphServiceClient graphService, IConfiguration config, SubscriptionStore store)
+        public GraphSubscriptionService(IConfiguration config, SubscriptionStore store, SessionStore sessionStore)
         {
-            this.graphService = graphService;
             this.config = config;
-            this.store = store;
+            this.subscriptionStore = store;
+            this.sessionStore = sessionStore;
         }
 
-        public async Task<Subscription?> CreateCalendarSubscriptionAsync(string calendarId, string resource)
+        public async Task<CalendarSubscriptionDto?> CreateCalendarSubscriptionAsync(string calendarId, string sessionId)
         {
-            if(store.TryGetSubscription(calendarId, out var existing))
+            if (subscriptionStore.TryGetSubscription(calendarId, out var existing))
             {
                 return existing;
             }
+            if (!sessionStore.TryGetSession(sessionId, out var session)) throw new ArgumentException();
 
-            var notificationUrl = config["Devtunnel:Url"] + "/api/webhook"; //CHANGE FOR PRODUCTION
+            var accessToken = session.AccessToken;
+
+            var credential = new DelegateCredential((_, _) =>
+                new ValueTask<AccessToken>(
+                new AccessToken(accessToken, session.TokenExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(50))
+             ));
+
+            graphService = new GraphServiceClient(credential);
+
+            var userId = (await graphService.Me.GetAsync()).Id;
+
+            var notificationUrl = config["Urls:Backend"] + "/api/webhook"; //CHANGE FOR PRODUCTION
             Console.WriteLine(notificationUrl);
             if (string.IsNullOrEmpty(notificationUrl))
                 throw new Exception("NotificationUrl is not configured");
@@ -34,17 +50,24 @@ namespace CalendarApi.Services
             {
                 ChangeType = "created,updated,deleted",
                 NotificationUrl = notificationUrl,
-                Resource = resource,
-                ExpirationDateTime = DateTime.UtcNow.AddDays(2)
+                Resource = $"/users/{userId}/calendars/{calendarId}/events",
+                ExpirationDateTime = DateTime.UtcNow.AddMinutes(10) //CHANGE FOR PRODUCTION
             };
 
             try
             {
+                await DeleteSubscriptionsForResourceAsync($"/users/{userId}/calendars/{calendarId}/events");
                 var result = await graphService.Subscriptions.PostAsync(subscription);
-                store.SaveSubscription(calendarId, result);
+                subscriptionStore.SaveSubscription(calendarId, result, userId);
                 ConsoleHelper.WriteTimeToConsole();
-                Console.WriteLine($"Subscription created: {result.Id}");
-                return result;
+                Console.WriteLine($"Subscription created: {result.Id} for resource {result.Resource}");
+                var dto = new CalendarSubscriptionDto
+                {
+                    CalendarId = calendarId,
+                    SubscriptionId = result.Id!,
+                    ExpiresAt = result.ExpirationDateTime!.Value,
+                };
+                return dto;
             }
             catch (Exception ex)
             {
@@ -55,6 +78,13 @@ namespace CalendarApi.Services
         public async Task<int> DeleteSubscriptionsForResourceAsync(string targetResource)
         {
             int deletedCount = 0;
+            var credential = new ClientSecretCredential(
+                tenantId: config["AzureAd:TenantId"],
+                clientId: config["AzureAd:ClientId"],
+                clientSecret: config["AzureAd:ClientSecret"]);
+
+            var graphService = new GraphServiceClient(credential);
+
 
             try
             {
