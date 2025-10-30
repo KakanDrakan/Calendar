@@ -59,7 +59,7 @@ builder.Services.AddSingleton<MongoDbContext>();
 
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<CalendarUpdateService>();
-builder.Services.AddScoped<GraphSubscriptionService>();
+builder.Services.AddSingleton<GraphSubscriptionService>();
 builder.Services.AddSingleton<IAuthService, MicrosoftAuthService>();
 builder.Services.AddScoped<QrCodeService>();
 builder.Services.AddSingleton<SignalRTokenService>();

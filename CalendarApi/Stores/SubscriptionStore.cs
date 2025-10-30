@@ -59,17 +59,23 @@ namespace CalendarApi.Stores
                 .FirstOrDefaultAsync();
         }
 
-        public async Task RemoveAsync(string calendarId)
+        public async Task RemoveBySubscriptionIdAsync(string subscriptionId)
         {
             try
             {
-                await _subscriptions.DeleteOneAsync(s => s.CalendarId == calendarId);
+                await _subscriptions.DeleteOneAsync(s => s.SubscriptionId == subscriptionId);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error deleting subscription for calendar {calendarId}: {ex.Message}");
+                Console.WriteLine($"Error deleting subscription {subscriptionId}: {ex.Message}");
             }
 
+        }
+
+        public async Task<List<CalendarSubscription>> GetExpiringSubscriptionsAsync(DateTimeOffset until)
+        {
+            var filter = Builders<CalendarSubscription>.Filter.Lt(s => s.ExpiresAt, until);
+            return await _subscriptions.Find(filter).ToListAsync();
         }
     }
 }

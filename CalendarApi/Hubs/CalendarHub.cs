@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using CalendarApi.Models;
+using CalendarApi.Stores;
+using Microsoft.AspNetCore.SignalR;
 using System.Collections.Concurrent;
 
 public class CalendarHub : Hub
@@ -110,30 +112,75 @@ public class CalendarHub : Hub
         Console.WriteLine($"Connection {Context.ConnectionId} left session group: {groupName}");
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        var sessionsToExpire = new List<string>();
+        var calendarsToRemove = new List<string>();
+
+        // --- Handle calendar connections ---
         foreach (var entry in calendarConnections)
         {
             lock (entry.Value)
             {
                 entry.Value.Remove(Context.ConnectionId);
                 if (entry.Value.Count == 0)
-                    calendarConnections.TryRemove(entry.Key, out _);
+                    calendarsToRemove.Add(entry.Key);
             }
         }
 
+        foreach (var calendarId in calendarsToRemove)
+            calendarConnections.TryRemove(calendarId, out _);
+
+        // --- Handle session connections ---
         foreach (var entry in sessionConnections)
         {
+            bool emptyAfterRemoval = false;
             lock (entry.Value)
             {
                 entry.Value.Remove(Context.ConnectionId);
                 if (entry.Value.Count == 0)
-                    sessionConnections.TryRemove(entry.Key, out _);
+                {
+                    emptyAfterRemoval = true;
+                    sessionsToExpire.Add(entry.Key);
+                }
+            }
+
+            if (emptyAfterRemoval)
+                sessionConnections.TryRemove(entry.Key, out _);
+        }
+
+        // --- Perform async DB updates outside of locks ---
+        if (sessionsToExpire.Count > 0)
+        {
+            var sessionStore = Context.GetHttpContext()?.RequestServices.GetService<SessionStore>();
+            if (sessionStore != null)
+            {
+                foreach (var sessionId in sessionsToExpire)
+                {
+                    try
+                    {
+                        var session = await sessionStore.GetSessionAsync(sessionId);
+                        if (session != null)
+                        {
+                            session.State = SessionState.Expired;
+                            await sessionStore.UpdateSessionAsync(session);
+                            Console.WriteLine($"[Hub] Session {sessionId} marked expired in DB.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Hub] Failed to expire session {sessionId}: {ex.Message}");
+                    }
+                }
             }
         }
 
-        return base.OnDisconnectedAsync(exception);
+        await base.OnDisconnectedAsync(exception);
     }
+
+
+    public static bool IsCalendarActive(string calendarId)
+    => calendarConnections.TryGetValue($"calendar:{calendarId}", out var conns) && conns.Count > 0;
 
     public static IEnumerable<string> GetActiveCalendars() => calendarConnections.Keys;
 

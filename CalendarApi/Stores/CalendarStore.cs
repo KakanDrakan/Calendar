@@ -91,7 +91,7 @@ namespace CalendarApi.Stores
                 cache.Set(EventToCalendarKey, map, cacheDuration);
             }
 
-            ConsoleHelper.WriteLineColored($"[CalendarStore] RemoveEvent: {eventId} from {calendarId} (remaining events: {events.Count})", ConsoleColor.DarkRed);
+            ConsoleHelper.WriteLineColored($"[CalendarStore] RemoveEvent: {eventId} from {calendarId} (remaining events: {events.Count})", ConsoleColor.DarkMagenta);
         }
 
         public string? GetCalendarIdForEvent(string eventId)

@@ -93,6 +93,7 @@ namespace CalendarApi.Stores
         {
             var now = DateTime.UtcNow;
             await _sessions.DeleteManyAsync(s => s.ExpiresAt < now);
+            await _sessions.DeleteManyAsync(s => s.State == SessionState.Expired);
         }
     }
 }
