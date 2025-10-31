@@ -5,12 +5,15 @@ using CalendarApi.Services;
 using CalendarApi.Stores;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Graph.Models;
+using Newtonsoft.Json;
+using System.Security.Cryptography.X509Certificates;
 
 namespace CalendarApi.Controllers
 {
     [ApiController]
     [Route("api/webhook")]
-    public class WebhookController(IEventService eventService, CalendarUpdateService updateService, RecentlyUpdatedResourceStore updatesStore) : ControllerBase
+    public class WebhookController(IEventService eventService, CalendarUpdateService updateService, RecentlyUpdatedResourceStore updatesStore, IConfiguration config) : ControllerBase
     {
 
         [HttpPost]
@@ -26,63 +29,42 @@ namespace CalendarApi.Controllers
                 return Content(validationToken, "text/plain", System.Text.Encoding.UTF8);
             }
 
+            NotificationRoot? notification;
+
             try
             {
-                var notification = System.Text.Json.JsonSerializer.Deserialize<NotificationRoot>(body);
-                if (notification?.Value == null || notification.Value.Count == 0)
-                    return BadRequest("No notifications received");
-
-                var updates = new List<GraphChangeNotification>();
-                var deletes = new HashSet<string>();
-
-                // First pass: collect all deletes
-                foreach (var change in notification.Value)
-                {
-                    if (change.ChangeType.Equals("deleted", StringComparison.OrdinalIgnoreCase))
+                notification = System.Text.Json.JsonSerializer.Deserialize<NotificationRoot>(
+                    body,
+                    new System.Text.Json.JsonSerializerOptions
                     {
-                        deletes.Add(change.ResourceData?.Id ?? "");
-                    }
-                }
-
-                // Second pass: collect updates that are not part of a create/delete
-                foreach (var change in notification.Value)
-                {
-                    if (change.ChangeType.Equals("updated", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var eventId = change.ResourceData?.Id ?? "";
-                        if (!deletes.Contains(eventId)) // ignore updates for events that are being deleted
-                        {
-                            updates.Add(change);
-                        }
-                    }
-                }
-
-                // Now process deletes first, then “true” updates
-                var deletesToProcess = notification.Value.Where(c => c.ChangeType.Equals("deleted", StringComparison.OrdinalIgnoreCase));
-                var updatesToProcess = updates;
-
-                foreach (var del in deletesToProcess)
-                {
-                    Console.WriteLine(); ConsoleHelper.WriteTimeToConsole();
-                    Console.WriteLine($"Received change: SubscriptionId={del.SubscriptionId.Substring(0, 5)}, ChangeType={del.ChangeType}, Resource={del.Resource.Substring(6, 14)}, ResourceId={del.ResourceData?.Id.Substring(0, 8)}");
-                    await eventService.HandleEventChangeAsync(del);
-                }
-
-                foreach (var upd in updatesToProcess)
-                {
-                    Console.WriteLine(); ConsoleHelper.WriteTimeToConsole();
-                    Console.WriteLine($"Received change: SubscriptionId={upd.SubscriptionId.Substring(0, 5)}, ChangeType={upd.ChangeType}, Resource={upd.Resource.Substring(6, 14)}, ResourceId={upd.ResourceData?.Id.Substring(0, 8)}");
-                    await eventService.HandleEventChangeAsync(upd);
-                }
-                
-
-                return Ok();
+                        PropertyNameCaseInsensitive = true
+                    });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error processing webhook: {ex.Message}");
-                return StatusCode(500, "Webhook processing failed");
+                Console.WriteLine($"Deserialization failed: {ex.Message}");
+                return BadRequest("Invalid payload");
             }
+
+            
+
+            if (notification?.Value == null || notification.Value.Count == 0)
+            {
+                Console.WriteLine("No notifications found in body:");
+                return BadRequest("Empty notification payload.");
+            }
+
+            try
+            {
+                await updateService.HandleCalendarUpdate(notification);
+            }
+            catch (Exception ex)
+            { 
+
+            }
+
+            
+            return Ok();
         }
     }
 }

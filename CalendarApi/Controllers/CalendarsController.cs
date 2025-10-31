@@ -45,12 +45,12 @@ namespace CalendarApi.Controllers
             session.State = SessionState.Authenticated;
             await sessionStore.UpdateSessionAsync(session);
 
-            subscriptionService.CreateCalendarSubscriptionAsync(dto.CalendarId, dto.SessionId);
+            var sub = await subscriptionService.CreateCalendarSubscriptionAsync(dto.CalendarId, dto.SessionId);
 
             // Notify any clients listening on that session group (desktop QR page)
             var sessionGroupName = $"session:{dto.SessionId}";
             await hubContext.Clients.Group(sessionGroupName)
-                .SendAsync("CalendarSelected", new { sessionId = dto.SessionId, calendarId = dto.CalendarId });
+                .SendAsync("CalendarSelected", new { sessionId = dto.SessionId, calendarId = dto.CalendarId, subscriptionId = sub?.SubscriptionId ?? null});
 
             return Ok(new { success = true });
         }

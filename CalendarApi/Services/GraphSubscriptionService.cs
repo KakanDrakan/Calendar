@@ -6,6 +6,7 @@ using CalendarApi.Stores;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using System.Globalization;
+using System.Security.Cryptography.X509Certificates;
 using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 
 namespace CalendarApi.Services
@@ -49,17 +50,28 @@ namespace CalendarApi.Services
             if (string.IsNullOrEmpty(notificationUrl))
                 throw new Exception("NotificationUrl is not configured");
 
+            var cert = new X509Certificate2(
+                config["Graph:EncryptionCertPath"],
+                config["Graph:EncryptionCertPassword"]);
+
+            var publicKeyBase64 = Convert.ToBase64String(cert.Export(X509ContentType.Cert));
+
             var subscription = new Subscription
             {
                 ChangeType = "created,updated,deleted",
                 NotificationUrl = notificationUrl,
-                Resource = $"/users/{userId}/calendars/{calendarId}/events",
-                ExpirationDateTime = DateTimeOffset.UtcNow.AddMinutes(int.Parse(config["ExpirationTime:Subscriptions"]))
+                Resource = $"/users/{userId}/calendars/{calendarId}/events?$select=subject,organizer,start,end,location,bodyPreview,isAllDay,id",
+                ExpirationDateTime = DateTimeOffset.UtcNow.AddMinutes(int.Parse(config["ExpirationTime:Subscriptions"])),
+                IncludeResourceData = true,
+                EncryptionCertificate = publicKeyBase64,
+                EncryptionCertificateId = "GraphWebhookEncryption"
             };
 
             try
             {
+                // remove old subscriptions to the same resource just in case
                 await DeleteSubscriptionsForResourceAsync($"/users/{userId}/calendars/{calendarId}/events");
+
                 var result = await graphService.Subscriptions.PostAsync(subscription);
                 await subscriptionStore.SaveSubscriptionAsync(calendarId, result, userId);
                 ConsoleHelper.WriteTimeToConsole();

@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using Microsoft.Graph.Models;
+using System.Text.Json.Serialization;
 
 namespace CalendarApi.Dtos
 {
@@ -20,6 +21,8 @@ namespace CalendarApi.Dtos
         public string Resource { get; set; }
         [JsonPropertyName("resourceData")]
         public ResourceData ResourceData { get; set; }
+        [JsonPropertyName("encryptedContent")]
+        public EncryptedContent? EncryptedContent { get; set; }
     }
 
     public class ResourceData
@@ -31,6 +34,23 @@ namespace CalendarApi.Dtos
         public string ODataId { get; set; }
         [JsonPropertyName("id")]
         public string Id { get; set; }
+    }
+    public class EncryptedContent
+    {
+        [JsonPropertyName("data")]
+        public string Data { get; set; }
+
+        [JsonPropertyName("dataKey")]
+        public string DataKey { get; set; }
+
+        [JsonPropertyName("dataSignature")]
+        public string DataSignature { get; set; }
+
+        [JsonPropertyName("encryptionCertificateId")]
+        public string EncryptionCertificateId { get; set; }
+
+        [JsonPropertyName("encryptionCertificateThumbprint")]
+        public string EncryptionCertificateThumbprint { get; set; }
     }
 
 }

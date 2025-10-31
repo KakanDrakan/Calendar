@@ -41,20 +41,6 @@ namespace CalendarApi.Controllers
             }
         }
 
-        [HttpPost("test-broadcast")]
-        public async Task<IActionResult> TestBroadcast()
-        {
-            try
-            {
-                await eventService.TestBroadcast();
-                return Ok();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error during test broadcast: {ex.Message}");
-                return StatusCode(500, "An error occurred while testing the broadcast.");
-            }
-        }
         [HttpDelete]
         public async Task<IActionResult> DeleteSubscriptionsToResource(string resource)
         {

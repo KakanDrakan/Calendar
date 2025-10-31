@@ -49,12 +49,12 @@ public class CalendarHub : Hub
     }
 
 
-    public async Task JoinCalendar(string calendarId)
+    public async Task JoinCalendar(string subscriptionId)
     {
-        var groupName = GetCalendarGroupName(calendarId);
+        var groupName = GetCalendarGroupName(subscriptionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
 
-        calendarConnections.AddOrUpdate(calendarId,
+        calendarConnections.AddOrUpdate(subscriptionId,
             _ => new HashSet<string> { Context.ConnectionId },
             (_, connections) =>
             {
@@ -65,16 +65,16 @@ public class CalendarHub : Hub
         Console.WriteLine($"Connection {Context.ConnectionId} joined calendar group: {groupName}");
     }
 
-    public async Task LeaveCalendar(string calendarId)
+    public async Task LeaveCalendar(string subscriptionId)
     {
-        var groupName = GetCalendarGroupName(calendarId);
+        var groupName = GetCalendarGroupName(subscriptionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
 
-        if (calendarConnections.TryGetValue(calendarId, out var set))
+        if (calendarConnections.TryGetValue(subscriptionId, out var set))
         {
             lock (set) set.Remove(Context.ConnectionId);
             if (set.Count == 0)
-                calendarConnections.TryRemove(calendarId, out _);
+                calendarConnections.TryRemove(subscriptionId, out _);
         }
 
         Console.WriteLine($"Connection {Context.ConnectionId} left calendar group: {groupName}");
@@ -179,8 +179,8 @@ public class CalendarHub : Hub
     }
 
 
-    public static bool IsCalendarActive(string calendarId)
-    => calendarConnections.TryGetValue($"calendar:{calendarId}", out var conns) && conns.Count > 0;
+    public static bool IsCalendarActive(string subscriptionId)
+    => calendarConnections.TryGetValue($"{subscriptionId}", out var conns) && conns.Count > 0;
 
     public static IEnumerable<string> GetActiveCalendars() => calendarConnections.Keys;
 

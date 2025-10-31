@@ -38,7 +38,7 @@ namespace CalendarApi.Services
             try
             {
                 await sessionStore.CleanupExpiredAsync();
-                logger.LogInformation("Expired sessions cleaned up at {Time}.", DateTime.UtcNow);
+                logger.LogInformation("Expired sessions cleaned up at {Time}.", DateTime.Now);
             }
             catch (Exception ex)
             {
@@ -55,7 +55,7 @@ namespace CalendarApi.Services
 
             foreach (var sub in expiring)
             {
-                if (CalendarHub.IsCalendarActive(sub.CalendarId))
+                if (CalendarHub.IsCalendarActive(sub.SubscriptionId))
                 {
                     try
                     {
