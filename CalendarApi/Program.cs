@@ -65,8 +65,6 @@ builder.Services.AddScoped<QrCodeService>();
 builder.Services.AddSingleton<SignalRTokenService>();
 
 builder.Services.AddSingleton<SubscriptionStore>();
-builder.Services.AddSingleton<RecentlyUpdatedResourceStore>();
-builder.Services.AddSingleton<CalendarStore>();
 builder.Services.AddSingleton<SessionStore>();
 
 builder.Services.AddHostedService<CleanupService>();

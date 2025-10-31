@@ -21,19 +21,15 @@ namespace CalendarApi.Services
         private readonly GraphSubscriptionService subscriptionService;
         private readonly IAuthService authService;
         private readonly SessionStore sessionStore;
-        private readonly RecentlyUpdatedResourceStore updatesStore;
-        private readonly SubscriptionStore subscriptionStore;
 
 
-        public EventService(GraphServiceClient graphServiceClient, CalendarUpdateService updateService, GraphSubscriptionService subscriptionService, IAuthService authService, SessionStore sessionStore, RecentlyUpdatedResourceStore updatesStore, SubscriptionStore subscriptionStore)
+        public EventService(GraphServiceClient graphServiceClient, CalendarUpdateService updateService, GraphSubscriptionService subscriptionService, IAuthService authService, SessionStore sessionStore)
         {
             this.graphServiceClient = graphServiceClient;
             this.updateService = updateService;
             this.subscriptionService = subscriptionService;
             this.authService = authService;
             this.sessionStore = sessionStore;
-            this.updatesStore = updatesStore;
-            this.subscriptionStore = subscriptionStore;
         }
 
         public async Task<List<EventDto>> GetEventsForUserAsync(string sessionId, string calendarId)
@@ -106,52 +102,6 @@ namespace CalendarApi.Services
         {
             return await subscriptionService.DeleteSubscriptionsForResourceAsync(resource);
         }
-
-        //public async Task<EventDto?> GetEventByIdAsync(string userId, string? calendarId, string eventId, bool useDefaultCalendar = false)
-        //{
-        //    try
-        //    {
-        //        Microsoft.Graph.Models.Event? response;
-
-        //        if (useDefaultCalendar || string.IsNullOrEmpty(calendarId))
-        //        {
-        //            // Default calendar path
-        //            response = await graphServiceClient.Users[userId].Events[eventId].GetAsync(r =>
-        //            {
-        //                r.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "bodyPreview", "isAllDay", "calendar" };
-        //            });
-        //        }
-        //        else
-        //        {
-        //            // Specific calendar path
-        //            response = await graphServiceClient.Users[userId].Calendars[calendarId].Events[eventId].GetAsync(r =>
-        //            {
-        //                r.QueryParameters.Select = new[] { "id", "subject", "start", "end", "location", "bodyPreview", "isAllDay" };
-        //            });
-        //        }
-
-        //        if (response == null) return null;
-
-        //        var dto = new EventDto
-        //        {
-        //            Id = response.Id,
-        //            Subject = response.Subject,
-        //            Start = response.Start,
-        //            End = response.End,
-        //            Location = response.Location,
-        //            BodyPreview = response.BodyPreview,
-        //            IsAllDay = response.IsAllDay ?? false,
-        //            CalendarId = calendarId ?? response.Calendar?.Id
-        //        };
-
-        //        return dto;
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Console.WriteLine($"[GetEventByIdAsync] Failed for event {eventId}: {ex.Message}");
-        //        return null;
-        //    }
-        //}
 
     }
 }

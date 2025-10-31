@@ -13,7 +13,7 @@ namespace CalendarApi.Controllers
 {
     [ApiController]
     [Route("api/webhook")]
-    public class WebhookController(IEventService eventService, CalendarUpdateService updateService, RecentlyUpdatedResourceStore updatesStore, IConfiguration config) : ControllerBase
+    public class WebhookController(IEventService eventService, CalendarUpdateService updateService) : ControllerBase
     {
 
         [HttpPost]
@@ -45,8 +45,6 @@ namespace CalendarApi.Controllers
                 Console.WriteLine($"Deserialization failed: {ex.Message}");
                 return BadRequest("Invalid payload");
             }
-
-            
 
             if (notification?.Value == null || notification.Value.Count == 0)
             {

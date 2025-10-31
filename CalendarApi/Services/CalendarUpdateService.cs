@@ -65,6 +65,7 @@ namespace CalendarApi.Services
 
             foreach (var change in notification.Value)
             {
+                if (change.ClientState != config["Graph:SubscriptionClientState"]) break;
                 string? eventId = change.ResourceData?.Id ?? change.ResourceData?.ODataId;
 
                 if (eventId == null || eventId == "") 

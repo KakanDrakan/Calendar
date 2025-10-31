@@ -58,6 +58,7 @@ namespace CalendarApi.Services
 
             var subscription = new Subscription
             {
+                ClientState = config["Graph:SubscriptionClientState"],
                 ChangeType = "created,updated,deleted",
                 NotificationUrl = notificationUrl,
                 Resource = $"/users/{userId}/calendars/{calendarId}/events?$select=subject,organizer,start,end,location,bodyPreview,isAllDay,id",
