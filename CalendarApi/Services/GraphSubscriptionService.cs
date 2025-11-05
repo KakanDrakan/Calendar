@@ -112,7 +112,23 @@ namespace CalendarApi.Services
                     {
                         if (sub.Resource?.Equals(targetResource, StringComparison.OrdinalIgnoreCase) == true)
                         {
-                            await graphService.Subscriptions[sub.Id].DeleteAsync();
+                            try
+                            {
+                                await graphService.Subscriptions[sub.Id].DeleteAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error deleting subscription from Graph: {ex.Message}");
+                            }
+                            try
+                            {
+                                await subscriptionStore.RemoveBySubscriptionIdAsync(sub.Id!);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error deleting subscription from store: {ex.Message}");
+                            }
+
                             Console.WriteLine($"Deleted subscription: {sub.Id}");
                             deletedCount++;
                         }
