@@ -1,18 +1,18 @@
 ﻿using CalendarApi.Models;
 using CalendarApi.Stores;
 using Microsoft.AspNetCore.SignalR;
+using StackExchange.Redis;
 using System.Collections.Concurrent;
 
 public class CalendarHub : Hub
 {
-    private static readonly ConcurrentDictionary<string, HashSet<string>> calendarConnections = new();
-    private static readonly ConcurrentDictionary<string, HashSet<string>> sessionConnections = new();
-
+    private readonly IConnectionMultiplexer redis;
     private readonly SignalRTokenService tokenService;
 
-    public CalendarHub(SignalRTokenService tokenService)
+    public CalendarHub(SignalRTokenService tokenService, IConnectionMultiplexer redis)
     {
         this.tokenService = tokenService;
+        this.redis = redis;
     }
 
 
@@ -34,14 +34,6 @@ public class CalendarHub : Hub
             var groupName = $"session:{sessionId}";
             await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
 
-            sessionConnections.AddOrUpdate(sessionId,
-                _ => new HashSet<string> { Context.ConnectionId },
-                (_, connections) =>
-                {
-                    lock (connections) connections.Add(Context.ConnectionId);
-                    return connections;
-                });
-
             Console.WriteLine($"Connection {Context.ConnectionId} auto-joined session group: {groupName}");
         }
 
@@ -54,13 +46,9 @@ public class CalendarHub : Hub
         var groupName = GetCalendarGroupName(subscriptionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
 
-        calendarConnections.AddOrUpdate(subscriptionId,
-            _ => new HashSet<string> { Context.ConnectionId },
-            (_, connections) =>
-            {
-                lock (connections) connections.Add(Context.ConnectionId);
-                return connections;
-            });
+
+        var db = redis.GetDatabase();
+        await db.SetAddAsync($"active:calendar:{subscriptionId}", Context.ConnectionId);
 
         Console.WriteLine($"Connection {Context.ConnectionId} joined calendar group: {groupName}");
     }
@@ -70,12 +58,9 @@ public class CalendarHub : Hub
         var groupName = GetCalendarGroupName(subscriptionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
 
-        if (calendarConnections.TryGetValue(subscriptionId, out var set))
-        {
-            lock (set) set.Remove(Context.ConnectionId);
-            if (set.Count == 0)
-                calendarConnections.TryRemove(subscriptionId, out _);
-        }
+
+        var db = redis.GetDatabase();
+        await db.SetRemoveAsync($"active:calendar:{subscriptionId}", Context.ConnectionId);
 
         Console.WriteLine($"Connection {Context.ConnectionId} left calendar group: {groupName}");
     }
@@ -86,14 +71,6 @@ public class CalendarHub : Hub
         var groupName = GetSessionGroupName(sessionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
 
-        sessionConnections.AddOrUpdate(sessionId,
-            _ => new HashSet<string> { Context.ConnectionId },
-            (_, connections) =>
-            {
-                lock (connections) connections.Add(Context.ConnectionId);
-                return connections;
-            });
-
         Console.WriteLine($"Connection {Context.ConnectionId} joined session group: {groupName}");
     }
 
@@ -101,88 +78,22 @@ public class CalendarHub : Hub
     {
         var groupName = GetSessionGroupName(sessionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
-
-        if (sessionConnections.TryGetValue(sessionId, out var set))
-        {
-            lock (set) set.Remove(Context.ConnectionId);
-            if (set.Count == 0)
-                sessionConnections.TryRemove(sessionId, out _);
-        }
-
         Console.WriteLine($"Connection {Context.ConnectionId} left session group: {groupName}");
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var sessionsToExpire = new List<string>();
-        var calendarsToRemove = new List<string>();
+        var db = redis.GetDatabase();
+        var endpoints = redis.GetEndPoints();
+        var server = redis.GetServer(endpoints.First());
 
-        // --- Handle calendar connections ---
-        foreach (var entry in calendarConnections)
+        foreach (var key in server.Keys(pattern: "active:calendar:*"))
         {
-            lock (entry.Value)
-            {
-                entry.Value.Remove(Context.ConnectionId);
-                if (entry.Value.Count == 0)
-                    calendarsToRemove.Add(entry.Key);
-            }
-        }
-
-        foreach (var calendarId in calendarsToRemove)
-            calendarConnections.TryRemove(calendarId, out _);
-
-        // --- Handle session connections ---
-        foreach (var entry in sessionConnections)
-        {
-            bool emptyAfterRemoval = false;
-            lock (entry.Value)
-            {
-                entry.Value.Remove(Context.ConnectionId);
-                if (entry.Value.Count == 0)
-                {
-                    emptyAfterRemoval = true;
-                    sessionsToExpire.Add(entry.Key);
-                }
-            }
-
-            if (emptyAfterRemoval)
-                sessionConnections.TryRemove(entry.Key, out _);
-        }
-
-        // --- Perform async DB updates outside of locks ---
-        if (sessionsToExpire.Count > 0)
-        {
-            var sessionStore = Context.GetHttpContext()?.RequestServices.GetService<SessionStore>();
-            if (sessionStore != null)
-            {
-                foreach (var sessionId in sessionsToExpire)
-                {
-                    try
-                    {
-                        var session = await sessionStore.GetSessionAsync(sessionId);
-                        if (session != null)
-                        {
-                            session.State = SessionState.Expired;
-                            await sessionStore.UpdateSessionAsync(session);
-                            Console.WriteLine($"[Hub] Session {sessionId} marked expired in DB.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[Hub] Failed to expire session {sessionId}: {ex.Message}");
-                    }
-                }
-            }
+            await db.SetRemoveAsync(key, Context.ConnectionId);
         }
 
         await base.OnDisconnectedAsync(exception);
     }
-
-
-    public static bool IsCalendarActive(string subscriptionId)
-    => calendarConnections.TryGetValue($"{subscriptionId}", out var conns) && conns.Count > 0;
-
-    public static IEnumerable<string> GetActiveCalendars() => calendarConnections.Keys;
 
     private string GetCalendarGroupName(string calendarId) => $"calendar:{calendarId}";
     private string GetSessionGroupName(string sessionId) => $"session:{sessionId}";

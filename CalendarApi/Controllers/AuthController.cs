@@ -40,7 +40,7 @@ namespace CalendarApi.Controllers
         [HttpGet("qr")]
         public async Task<IActionResult> GetQrCode(string sessionId)
         {
-            if (string.IsNullOrEmpty(sessionId)) return BadRequest("Mission sessionId");
+            if (string.IsNullOrEmpty(sessionId)) return BadRequest("Missing sessionId");
             var authUrl = authService.GetAuthorizationUrl(sessionId);
             var qrBytes = qrCodeService.GenerateQrCode(authUrl);
 
@@ -52,12 +52,24 @@ namespace CalendarApi.Controllers
         {
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
                 return BadRequest("Invalid OAuth callback parameters.");
-
-            var session = await authService.ExchangeCodeForTokenAsync(state, code);
-            if (session == null)
-                return NotFound("Session not found or expired.");
-            var frontendUrl = config["Urls:Frontend"];
-            return Redirect($"{frontendUrl}/select-calendar?session={session.SessionId}");
+            try
+            {
+                var session = await authService.ExchangeCodeForTokenAsync(state, code);
+                if (session == null)
+                {
+                    logger.LogWarning("Session not found or expired for state {State}", state);
+                    return Unauthorized("Session expired or invalid.");
+                }
+                   
+                var frontendUrl = config["Urls:Frontend"];
+                logger.LogInformation("OAuth callback successful for session {SessionId}, redirecting to frontend.", session.SessionId);
+                return Redirect($"{frontendUrl}/select-calendar?session={session.SessionId}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error during OAuth callback for session {SessionId}", state);
+                return StatusCode(500, "Internal server error during authentication.");
+            }
         }
 
         /// <summary>

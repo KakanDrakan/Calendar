@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /CalendarApi/appsettings.json
 /CalendarApi/start.ngrok.ps1
+.env

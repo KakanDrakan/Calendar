@@ -92,8 +92,12 @@ namespace CalendarApi.Stores
         public async Task CleanupExpiredAsync()
         {
             var now = DateTime.UtcNow;
-            await _sessions.DeleteManyAsync(s => s.ExpiresAt < now);
-            await _sessions.DeleteManyAsync(s => s.State == SessionState.Expired);
+            var filter = Builders<AuthSession>.Filter.Or(
+                Builders<AuthSession>.Filter.Lt(s => s.ExpiresAt, now),
+                Builders<AuthSession>.Filter.Eq(s => s.State, SessionState.Expired)
+            );
+
+            var result = await _sessions.DeleteManyAsync(filter);
         }
     }
 }

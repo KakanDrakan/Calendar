@@ -1,0 +1,51 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+  api:
+    build:
+      context: ./CalendarApi
+      dockerfile: Dockerfile
+    container_name: calendar-api
+    ports:
+      - "7248:7248"
+    environment:
+      - DOTNET_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:7248
+      - REDIS_CONNECTION=redis:6379
+      - SIGNALR_TOKEN_SECRET=${SIGNALR_TOKEN_SECRET}
+      - AzureAd__ClientId=${AZURE_CLIENT_ID}
+      - AzureAd__ClientSecret=${AZURE_CLIENT_SECRET}
+      - AzureAd__TenantId=${AZURE_TENANT_ID}
+      - SignalR__TokenSecret=${SIGNALR_TOKEN_SECRET}
+      - MongoDb__ConnectionString=mongodb://mongo:27017
+      - Graph__EncryptionCertPath=/app/GraphWebhookEncryption.pfx
+      - Graph__EncryptionCertPassword=69RabidZombies420
+    depends_on:
+      - redis
+      - mongo
+
+  frontend:
+    build:
+      context: ../../../Documents/GitHub/outlook-cal-viewer
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://nondiastatic-irenically-chaim.ngrok-free.dev
+    container_name: calendar-frontend
+    ports:
+      - "8080:8080"
+    environment:
+      - VITE_API_URL=https://nondiastatic-irenically-chaim.ngrok-free.dev
+    depends_on:
+      - api
+volumes:
+  mongo-data:

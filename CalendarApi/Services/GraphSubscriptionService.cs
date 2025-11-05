@@ -161,6 +161,7 @@ namespace CalendarApi.Services
             var graphService = new GraphServiceClient(credential);
             try
             {
+                await subscriptionStore.RemoveBySubscriptionIdAsync(subscriptionId);
                 await graphService.Subscriptions[subscriptionId].DeleteAsync();
                 ConsoleHelper.WriteTimeToConsole();
                 Console.WriteLine($"Subscription deleted: {subscriptionId}");
